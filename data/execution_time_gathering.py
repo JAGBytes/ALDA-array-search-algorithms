@@ -1,87 +1,78 @@
 import time
 import tracemalloc
-import random
-import gc
-
 from data import constants, data_generator
 from algorithms.binary_search import binary_search
 from algorithms.jump_search import jump_search
 from algorithms.linear_search import linear_search
 
-def take_time_and_memory_for_search_algorithm(samples_array, search_function):
+def measure_performance(min_size, max_size, step, samples):
+    """Mide tiempo y memoria para los 3 algoritmos (lineal, binaria, saltos)."""
+    results = []
+    for size in range(min_size, max_size + 1, step):
+        print(f"Procesando tamaño: {size}")
+        
+        # Generar datos y targets
+        sorted_samples = [data_generator.get_sorted_random_list(size) for _ in range(samples)]
+        unsorted_samples = [data_generator.get_random_list(size) for _ in range(samples)]
+        targets = [data_generator.get_random_x(size) for _ in range(samples)]
+        
+        # Medir algoritmos
+        linear_time, linear_mem = measure_algorithm(unsorted_samples, targets, linear_search)
+        binary_time, binary_mem = measure_algorithm(sorted_samples, targets, binary_search)
+        jump_time, jump_mem = measure_algorithm(sorted_samples, targets, jump_search)
+        
+        results.append([
+            size,
+            linear_time, linear_mem,
+            binary_time, binary_mem,
+            jump_time, jump_mem
+        ])
+    return results
+
+def measure_algorithm(samples, targets, algorithm):
+    """Mide tiempo (ms) y memoria (bytes) de un algoritmo."""
     times = []
     mem_usages = []
-
-    for arr, target in samples_array:
-        # Forzar recolección de basura para minimizar interferencias
-        gc.collect()
-
-        # Iniciar trazado de memoria
+    
+    for arr, target in zip(samples, targets):
+        # Medición de memoria
         tracemalloc.start()
-        start_snapshot = tracemalloc.take_snapshot()
-
-        # Iniciar medición de tiempo con mayor precisión
+        # Medición de tiempo
         start_time = time.perf_counter()
-
-        # Ejecutamos el algoritmo de búsqueda
-        search_function(arr, target)
-
+        # Ejecutar algoritmo
+        algorithm(arr, target)
         end_time = time.perf_counter()
-
-        # Tomamos una instantánea final de memoria y detenemos tracemalloc
-        end_snapshot = tracemalloc.take_snapshot()
+        # Obtener memoria pico
+        _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
-
-        # Cálculo de uso de memoria a partir de la comparación de instantáneas
-        stats = end_snapshot.compare_to(start_snapshot, 'filename')
-        # Calculamos el máximo uso (puedes probar también sum o average)
-        peak_usage = max(stat.size_diff for stat in stats)
-
-        # Multiplicamos el tiempo por la constante definida en constants.py
-        elapsed_time = (end_time - start_time)
-        exec_time = max(1, int(constants.TIME_MULTIPLIER * elapsed_time))
-
-        times.append(exec_time)
-        mem_usages.append(peak_usage)
-
-    # Ordenamos para obtener la mediana (reduce el impacto de valores atípicos)
-    times.sort()
-    mem_usages.sort()
-    median_time = times[len(times) // 2]
-    median_mem = mem_usages[len(mem_usages) // 2]
-
-    return median_time, median_mem
-
-def take_times(size, samples_by_size):
-    samples = []
-    for _ in range(samples_by_size):
-        # Generamos un array aleatorio y lo ORDENAMOS (necesario para binary y jump search)
-        arr = sorted(data_generator.get_random_list(size))
-        # Seleccionamos un target que sí esté en el array
-        target = random.choice(arr)
-        samples.append((arr, target))
-
-    linear_res = take_time_and_memory_for_search_algorithm(samples, linear_search)
-    binary_res = take_time_and_memory_for_search_algorithm(samples, binary_search)
-    jump_res = take_time_and_memory_for_search_algorithm(samples, jump_search)
-
-    return [linear_res, binary_res, jump_res]
-
-def take_execution_time(minimum_size, maximum_size, step, samples_by_size):
-    return_table = []
-    for size in range(minimum_size, maximum_size + 1, step):
-        print(f"\nProcesando tamaño: {size}")
-        (linear_time, linear_mem), (binary_time, binary_mem), (jump_time, jump_mem) = take_times(size, samples_by_size)
-        return_table.append([size, linear_time, binary_time, jump_time,
-                             linear_mem, binary_mem, jump_mem])
-    return return_table
+        
+        # Calcular métricas
+        elapsed_time = (end_time - start_time) * constants.TIME_MULTIPLIER  # ej: a milisegundos
+        times.append(elapsed_time)
+        mem_usages.append(peak)
+    
+    # Retornar mediana
+    def _median(lst):
+        sorted_lst = sorted(lst)
+        n = len(sorted_lst)
+        return sorted_lst[n // 2]
+    
+    return _median(times), _median(mem_usages)
 
 if __name__ == "__main__":
-    # Ajusta estos valores para ver más diferencia en memoria:
-    # - Tamaños de 10,000 hasta 50,000 en incrementos de 10,000
-    # - 5 muestras por tamaño
-    results = take_execution_time(10_000, 50_000, 10_000, 5)
-
-    print("\nTamaño | Linear Time | Binary Time | Jump Time | Linear Mem | Binary Mem | Jump Mem")
+    # Configuración para ver diferencias en TIEMPO (no memoria)
+    results = measure_performance(
+        min_size=10_000, 
+        max_size=50_000, 
+        step=10_000, 
+        samples=10
+    )
+    
+"""     # Encabezado legible
+    print("\nTamaño | Lineal (ms) | Binaria (ms) | Saltos (ms) | Mem Lineal (B) | Mem Binaria (B) | Mem Saltos (B)")
+    print("-" * 80)
     for row in results:
-        print(row)
+        size, t_lin, m_lin, t_bin, m_bin, t_jump, m_jump = row
+        print(
+            f"{size:6} | {t_lin:10.4f} | {t_bin:11.4f} | {t_jump:10.4f} | {m_lin:12} | {m_bin:13} | {m_jump:12}"
+        ) """
